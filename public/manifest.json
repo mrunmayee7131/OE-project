@@ -1,41 +1,17 @@
 {
-  "short_name": "SecureNotes",
-  "name": "Confidential Notes - Zero Knowledge Encryption",
+  "short_name": "Secure Notes",
+  "name": "Confidential Notes App",
+  "description": "End-to-end encrypted notes application with offline support",
   "icons": [
     {
       "src": "favicon.ico",
       "sizes": "64x64 32x32 24x24 16x16",
       "type": "image/x-icon"
-    },
-    {
-      "src": "icons/icon-192.png",
-      "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "icons/icon-512.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "any maskable"
     }
   ],
   "start_url": ".",
   "display": "standalone",
   "theme_color": "#6366f1",
   "background_color": "#0f172a",
-  "description": "A secure, encrypted note-taking app with zero-knowledge architecture",
-  "categories": ["productivity", "utilities"],
-  "screenshots": [
-    {
-      "src": "screenshots/notes-list.png",
-      "type": "image/png",
-      "sizes": "1280x720"
-    },
-    {
-      "src": "screenshots/note-editor.png",
-      "type": "image/png",
-      "sizes": "1280x720"
-    }
-  ]
+  "orientation": "portrait-primary"
 }
