@@ -31,7 +31,7 @@ function NotesList({ user, isOffline }) {
         // Load from IndexedDB when offline
         encryptedNotes = await notesDB.getLocalNotes(user.uid);
       } else {
-        // Load from Firebase when online
+        // Load from Firebase when online - FIXED: Added userId parameter
         encryptedNotes = await getNotes(user.uid);
         
         // Cache notes locally for offline access
@@ -68,44 +68,35 @@ function NotesList({ user, isOffline }) {
   };
 
   const handleDelete = async (noteId) => {
-    if (!window.confirm('Are you sure you want to delete this note?')) {
-      return;
-    }
+    if (!window.confirm('Are you sure you want to delete this note?')) return;
 
     try {
       if (isOffline) {
-        // Delete locally and queue for sync
+        // Delete locally when offline
         await notesDB.deleteNoteLocally(noteId);
       } else {
-        // Delete from Firebase
-        await deleteFirebaseNote(noteId);
-        // Also delete from local cache
+        // FIXED: Added userId parameter
+        await deleteFirebaseNote(user.uid, noteId);
         await notesDB.deleteNoteLocally(noteId);
       }
-
-      // Update UI
+      
+      // Update local state
       setNotes(notes.filter(note => note.id !== noteId));
     } catch (error) {
       console.error('Error deleting note:', error);
-      alert('Failed to delete note');
+      setError('Failed to delete note. Please try again.');
     }
   };
 
-  const filteredNotes = notes.filter(note => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      note.title?.toLowerCase().includes(term) ||
-      note.content?.toLowerCase().includes(term) ||
-      note.tags?.some(tag => tag.toLowerCase().includes(term))
-    );
-  });
+  const filteredNotes = notes.filter(note =>
+    note.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    note.content?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   if (loading) {
     return (
-      <div className="loading-container">
-        <div className="loader"></div>
-        <p>Decrypting your notes...</p>
+      <div className="notes-container">
+        <div className="loading">Loading notes...</div>
       </div>
     );
   }
@@ -113,9 +104,9 @@ function NotesList({ user, isOffline }) {
   return (
     <div className="notes-container">
       <div className="notes-header">
-        <h1>📝 My Secure Notes</h1>
+        <h1>My Notes</h1>
         <Link to="/notes/new" className="new-note-btn">
-          ➕ New Note
+          + New Note
         </Link>
       </div>
 
@@ -124,7 +115,7 @@ function NotesList({ user, isOffline }) {
       <div className="search-bar">
         <input
           type="text"
-          placeholder="🔍 Search notes..."
+          placeholder="Search notes..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="search-input"
@@ -133,16 +124,7 @@ function NotesList({ user, isOffline }) {
 
       {filteredNotes.length === 0 ? (
         <div className="empty-state">
-          {searchTerm ? (
-            <p>No notes found matching "{searchTerm}"</p>
-          ) : (
-            <>
-              <p>You don't have any notes yet.</p>
-              <Link to="/notes/new" className="cta-button">
-                Create Your First Note
-              </Link>
-            </>
-          )}
+          <p>No notes yet. Create your first note!</p>
         </div>
       ) : (
         <div className="notes-grid">
@@ -150,19 +132,12 @@ function NotesList({ user, isOffline }) {
             <NoteItem
               key={note.id}
               note={note}
+              onClick={() => navigate(`/notes/${note.id}`)}
               onDelete={handleDelete}
-              onClick={() => navigate(`/notes/edit/${note.id}`)}
             />
           ))}
         </div>
       )}
-
-      <div className="notes-footer">
-        <p>
-          {notes.length} {notes.length === 1 ? 'note' : 'notes'} • 
-          {isOffline ? ' 📵 Offline Mode' : ' ☁️ Synced'}
-        </p>
-      </div>
     </div>
   );
 }

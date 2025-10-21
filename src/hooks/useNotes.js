@@ -27,7 +27,7 @@ export function useNotes(user, isOffline) {
         // Load from IndexedDB when offline
         encryptedNotes = await notesDB.getLocalNotes(user.uid);
       } else {
-        // Load from Firebase when online
+        // Load from Firebase when online - FIXED: Added userId parameter
         encryptedNotes = await getNotes(user.uid);
         
         // Cache notes locally for offline access
@@ -88,8 +88,8 @@ export function useNotes(user, isOffline) {
         encryptedNote.syncStatus = 'pending';
         await notesDB.saveNoteLocally(encryptedNote);
       } else {
-        // Save to Firebase
-        noteId = await saveNote(encryptedNote);
+        // Save to Firebase - FIXED: Added userId parameter
+        noteId = await saveNote(user.uid, encryptedNote);
         encryptedNote.id = noteId;
         await notesDB.saveNoteLocally(encryptedNote);
       }
@@ -121,7 +121,8 @@ export function useNotes(user, isOffline) {
       if (isOffline) {
         await notesDB.updateNoteLocally(noteId, encryptedNote);
       } else {
-        await updateNote(noteId, encryptedNote);
+        // FIXED: Added userId parameter
+        await updateNote(user.uid, noteId, encryptedNote);
         await notesDB.saveNoteLocally({ ...encryptedNote, id: noteId });
       }
 
@@ -144,8 +145,8 @@ export function useNotes(user, isOffline) {
         // Delete locally and queue for sync
         await notesDB.deleteNoteLocally(noteId);
       } else {
-        // Delete from Firebase
-        await deleteFirebaseNote(noteId);
+        // Delete from Firebase - FIXED: Added userId parameter
+        await deleteFirebaseNote(user.uid, noteId);
         // Also delete from local cache
         await notesDB.deleteNoteLocally(noteId);
       }
@@ -165,13 +166,13 @@ export function useNotes(user, isOffline) {
     setSyncing(true);
     try {
       const result = await notesDB.syncWithFirebase(async (operation) => {
-        // Handle each sync operation
+        // Handle each sync operation - FIXED: Added userId parameter to all operations
         if (operation.action === 'create') {
-          await saveNote(operation.data);
+          await saveNote(user.uid, operation.data);
         } else if (operation.action === 'update') {
-          await updateNote(operation.noteId, operation.data);
+          await updateNote(user.uid, operation.noteId, operation.data);
         } else if (operation.action === 'delete') {
-          await deleteFirebaseNote(operation.noteId);
+          await deleteFirebaseNote(user.uid, operation.noteId);
         }
       });
 

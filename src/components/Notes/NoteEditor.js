@@ -36,8 +36,8 @@ function NoteEditor({ user, isOffline }) {
         const notes = await notesDB.getLocalNotes(user.uid);
         noteData = notes.find(n => n.id === id);
       } else {
-        // Load from Firebase when online
-        noteData = await getNote(id);
+        // Load from Firebase when online - FIXED: Added userId parameter
+        noteData = await getNote(user.uid, id);
       }
 
       if (noteData && noteData.encrypted) {
@@ -88,7 +88,8 @@ function NoteEditor({ user, isOffline }) {
         if (isOffline) {
           await notesDB.updateNoteLocally(id, encryptedNote);
         } else {
-          await updateNote(id, encryptedNote);
+          // FIXED: Added userId parameter
+          await updateNote(user.uid, id, encryptedNote);
           await notesDB.saveNoteLocally({ ...encryptedNote, id });
         }
       } else {
@@ -102,7 +103,8 @@ function NoteEditor({ user, isOffline }) {
           encryptedNote.syncStatus = 'pending';
           await notesDB.saveNoteLocally(encryptedNote);
         } else {
-          const newId = await saveNote(encryptedNote);
+          // FIXED: Added userId parameter
+          const newId = await saveNote(user.uid, encryptedNote);
           await notesDB.saveNoteLocally({ ...encryptedNote, id: newId });
         }
       }
@@ -151,7 +153,7 @@ function NoteEditor({ user, isOffline }) {
   // Auto-save functionality
   useEffect(() => {
     const autoSaveTimer = setTimeout(() => {
-      if ((note.title || note.content) && !saving) {
+      if ((note.title || note.content) && !saving && id) {
         handleSave();
       }
     }, 5000); // Auto-save after 5 seconds of inactivity
