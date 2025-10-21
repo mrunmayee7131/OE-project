@@ -21,12 +21,14 @@ function App() {
     // Auth state listener
     const unsubscribe = onAuthChange(async (firebaseUser) => {
       if (firebaseUser) {
+        console.log('User logged in:', firebaseUser.uid);
         setUser({
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           displayName: firebaseUser.displayName
         });
       } else {
+        console.log('User logged out');
         setUser(null);
         encryptionService.clearMasterKey();
       }
@@ -35,14 +37,15 @@ function App() {
 
     // Network status listeners
     const handleOnline = () => {
+      console.log('Network: Online');
       setIsOffline(false);
-      // Trigger sync when coming back online
       if (user) {
         syncNotes();
       }
     };
 
     const handleOffline = () => {
+      console.log('Network: Offline');
       setIsOffline(true);
     };
 
@@ -61,9 +64,7 @@ function App() {
     
     setSyncStatus('syncing');
     try {
-      // Sync logic would go here
       const result = await notesDB.syncWithFirebase(async (operation) => {
-        // Handle each sync operation
         console.log('Syncing operation:', operation);
       });
       
@@ -95,9 +96,11 @@ function App() {
 
   if (loading) {
     return (
-      <div className="loading-container">
-        <div className="loader"></div>
-        <p>Loading secure notes...</p>
+      <div className="App">
+        <div className="loading-container">
+          <div className="loader"></div>
+          <p>Loading Secure Notes...</p>
+        </div>
       </div>
     );
   }
@@ -115,7 +118,7 @@ function App() {
         <main className="main-content">
           {isOffline && (
             <div className="offline-banner">
-              <span>📵 You're offline. Changes will sync when you reconnect.</span>
+              📵 You're offline. Changes will sync when you reconnect.
             </div>
           )}
           
@@ -145,7 +148,7 @@ function App() {
               } 
             />
             <Route 
-              path="/notes/edit/:id" 
+              path="/notes/:id" 
               element={
                 user ? <NoteEditor user={user} isOffline={isOffline} /> : <Navigate to="/login" />
               } 

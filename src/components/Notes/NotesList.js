@@ -15,24 +15,33 @@ function NotesList({ user, isOffline }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    loadNotes();
+    if (user) {
+      loadNotes();
+    }
   }, [user, isOffline]);
 
   const loadNotes = async () => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     setError('');
     
     try {
+      console.log('Loading notes for user:', user.uid);
       let encryptedNotes = [];
       
       if (isOffline) {
         // Load from IndexedDB when offline
+        console.log('Loading from IndexedDB (offline)');
         encryptedNotes = await notesDB.getLocalNotes(user.uid);
       } else {
-        // Load from Firebase when online - FIXED: Added userId parameter
+        // Load from Firebase when online
+        console.log('Loading from Firebase (online)');
         encryptedNotes = await getNotes(user.uid);
+        console.log('Loaded notes:', encryptedNotes.length);
         
         // Cache notes locally for offline access
         for (const note of encryptedNotes) {
@@ -58,10 +67,11 @@ function NotesList({ user, isOffline }) {
         return note;
       });
 
+      console.log('Setting notes:', decryptedNotes.length);
       setNotes(decryptedNotes);
     } catch (error) {
       console.error('Error loading notes:', error);
-      setError('Failed to load notes. Please try again.');
+      setError(error.message || 'Failed to load notes. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -75,7 +85,7 @@ function NotesList({ user, isOffline }) {
         // Delete locally when offline
         await notesDB.deleteNoteLocally(noteId);
       } else {
-        // FIXED: Added userId parameter
+        // Delete from Firebase
         await deleteFirebaseNote(user.uid, noteId);
         await notesDB.deleteNoteLocally(noteId);
       }
@@ -96,7 +106,10 @@ function NotesList({ user, isOffline }) {
   if (loading) {
     return (
       <div className="notes-container">
-        <div className="loading">Loading notes...</div>
+        <div className="loading-container">
+          <div className="loader"></div>
+          <p>Loading notes...</p>
+        </div>
       </div>
     );
   }
@@ -104,7 +117,7 @@ function NotesList({ user, isOffline }) {
   return (
     <div className="notes-container">
       <div className="notes-header">
-        <h1>My Notes</h1>
+        <h1>📝 My Notes</h1>
         <Link to="/notes/new" className="new-note-btn">
           + New Note
         </Link>
@@ -115,7 +128,7 @@ function NotesList({ user, isOffline }) {
       <div className="search-bar">
         <input
           type="text"
-          placeholder="Search notes..."
+          placeholder="🔍 Search notes..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="search-input"
@@ -124,7 +137,12 @@ function NotesList({ user, isOffline }) {
 
       {filteredNotes.length === 0 ? (
         <div className="empty-state">
-          <p>No notes yet. Create your first note!</p>
+          <div className="empty-icon">📔</div>
+          <h2>No notes yet</h2>
+          <p>Create your first encrypted note to get started!</p>
+          <Link to="/notes/new" className="cta-button">
+            Create Your First Note
+          </Link>
         </div>
       ) : (
         <div className="notes-grid">
