@@ -1,32 +1,41 @@
+// src/components/Layout/Header.js
 import React from 'react';
-import './Layout.css';
+import { Link } from 'react-router-dom';
+import './Header.css';
 
 function Header({ user, onLogout, isOffline, syncStatus }) {
   return (
-    <header className="header">
+    <header className="app-header">
       <div className="header-content">
-        <div className="header-title">
-          🔐 Secure Notes
+        <div className="logo">
+          <Link to="/">
+            <h1>🔐 Secure Notes</h1>
+          </Link>
         </div>
-        
-        <nav className="header-nav">
-          {user && (
+
+        {user && (
+          <div className="header-nav">
             <div className="user-info">
-              <span>👤 {user.displayName || user.email}</span>
+              {isOffline && (
+                <span className="offline-indicator">📵 Offline</span>
+              )}
               
-              <div className={`sync-indicator ${syncStatus}`}>
-                {syncStatus === 'syncing' && '🔄 Syncing...'}
-                {syncStatus === 'synced' && '✓ Synced'}
-                {syncStatus === 'error' && '⚠️ Sync Error'}
-                {isOffline && '📵 Offline'}
-              </div>
-              
-              <button onClick={onLogout} className="logout-btn">
-                Logout
-              </button>
+              {!isOffline && syncStatus && (
+                <span className={`sync-indicator ${syncStatus}`}>
+                  {syncStatus === 'synced' && '✓ Synced'}
+                  {syncStatus === 'syncing' && '↻ Syncing...'}
+                  {syncStatus === 'error' && '⚠ Sync Error'}
+                </span>
+              )}
+
+              <span className="user-email">{user.email}</span>
             </div>
-          )}
-        </nav>
+
+            <button onClick={onLogout} className="logout-btn">
+              Logout
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

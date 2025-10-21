@@ -57,7 +57,7 @@ function App() {
   }, [user]);
 
   const syncNotes = async () => {
-    if (!navigator.onLine) return;
+    if (!navigator.onLine || !user) return;
     
     setSyncStatus('syncing');
     try {

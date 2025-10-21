@@ -24,15 +24,21 @@ import {
   enableIndexedDbPersistence
 } from 'firebase/firestore';
 
-// Firebase configuration - Note: Using Vite environment variables (VITE_ prefix)
+// Firebase configuration - Using Create React App environment variables (REACT_APP_ prefix)
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID
 };
+
+// Validate Firebase config
+if (!firebaseConfig.apiKey) {
+  console.error('Firebase configuration is missing. Please check your .env file.');
+  console.error('Make sure all environment variables start with REACT_APP_');
+}
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -54,23 +60,15 @@ enableIndexedDbPersistence(db).catch((err) => {
 export const registerUser = async (email, password, displayName) => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    
-    // Update user profile with display name
+    const user = userCredential.user;
+
     if (displayName) {
-      await updateProfile(userCredential.user, { displayName });
+      await updateProfile(user, { displayName });
     }
 
-    // Create user document in Firestore
-    await setDoc(doc(db, 'users', userCredential.user.uid), {
-      uid: userCredential.user.uid,
-      email: email,
-      displayName: displayName || email.split('@')[0],
-      createdAt: serverTimestamp(),
-      encryptionSalt: null // Will be set when user creates encryption key
-    });
-
-    return userCredential.user;
+    return user;
   } catch (error) {
+    console.error('Registration error:', error);
     throw error;
   }
 };
@@ -80,6 +78,7 @@ export const loginUser = async (email, password) => {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     return userCredential.user;
   } catch (error) {
+    console.error('Login error:', error);
     throw error;
   }
 };
@@ -88,12 +87,9 @@ export const logoutUser = async () => {
   try {
     await signOut(auth);
   } catch (error) {
+    console.error('Logout error:', error);
     throw error;
   }
-};
-
-export const getCurrentUser = () => {
-  return auth.currentUser;
 };
 
 export const onAuthChange = (callback) => {
@@ -101,90 +97,108 @@ export const onAuthChange = (callback) => {
 };
 
 // Firestore functions for notes
-export const saveNote = async (note) => {
+export const saveNote = async (userId, noteData) => {
   try {
-    const noteRef = doc(collection(db, 'notes'));
+    const noteRef = doc(collection(db, 'users', userId, 'notes'));
+    const noteId = noteRef.id;
+
     await setDoc(noteRef, {
-      ...note,
-      id: noteRef.id,
-      createdAt: note.createdAt || serverTimestamp(),
+      ...noteData,
+      id: noteId,
+      userId: userId,
+      createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
-    return noteRef.id;
+
+    return noteId;
   } catch (error) {
+    console.error('Error saving note:', error);
     throw error;
   }
 };
 
-export const updateNote = async (noteId, updates) => {
+export const updateNote = async (userId, noteId, noteData) => {
   try {
-    const noteRef = doc(db, 'notes', noteId);
+    const noteRef = doc(db, 'users', userId, 'notes', noteId);
     await updateDoc(noteRef, {
-      ...updates,
+      ...noteData,
       updatedAt: serverTimestamp()
     });
   } catch (error) {
+    console.error('Error updating note:', error);
     throw error;
   }
 };
 
-export const deleteNote = async (noteId) => {
+export const deleteNote = async (userId, noteId) => {
   try {
-    await deleteDoc(doc(db, 'notes', noteId));
+    const noteRef = doc(db, 'users', userId, 'notes', noteId);
+    await deleteDoc(noteRef);
   } catch (error) {
+    console.error('Error deleting note:', error);
     throw error;
   }
 };
 
 export const getNotes = async (userId) => {
   try {
-    const q = query(
-      collection(db, 'notes'),
-      where('userId', '==', userId),
-      orderBy('updatedAt', 'desc')
-    );
+    const notesRef = collection(db, 'users', userId, 'notes');
+    const q = query(notesRef, orderBy('updatedAt', 'desc'));
     const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+
+    const notes = [];
+    querySnapshot.forEach((doc) => {
+      notes.push({ id: doc.id, ...doc.data() });
+    });
+
+    return notes;
   } catch (error) {
+    console.error('Error getting notes:', error);
     throw error;
   }
 };
 
-export const getNote = async (noteId) => {
+export const getNote = async (userId, noteId) => {
   try {
-    const noteDoc = await getDoc(doc(db, 'notes', noteId));
-    if (noteDoc.exists()) {
-      return { id: noteDoc.id, ...noteDoc.data() };
+    const noteRef = doc(db, 'users', userId, 'notes', noteId);
+    const noteSnap = await getDoc(noteRef);
+
+    if (noteSnap.exists()) {
+      return { id: noteSnap.id, ...noteSnap.data() };
+    } else {
+      throw new Error('Note not found');
     }
-    return null;
   } catch (error) {
+    console.error('Error getting note:', error);
     throw error;
   }
 };
 
-// User encryption key management
+// Encryption salt functions
 export const saveUserEncryptionSalt = async (userId, salt) => {
   try {
-    await updateDoc(doc(db, 'users', userId), {
+    const userRef = doc(db, 'users', userId);
+    await setDoc(userRef, {
       encryptionSalt: salt,
-      encryptionUpdatedAt: serverTimestamp()
-    });
+      updatedAt: serverTimestamp()
+    }, { merge: true });
   } catch (error) {
+    console.error('Error saving encryption salt:', error);
     throw error;
   }
 };
 
 export const getUserEncryptionSalt = async (userId) => {
   try {
-    const userDoc = await getDoc(doc(db, 'users', userId));
-    if (userDoc.exists()) {
-      return userDoc.data().encryptionSalt;
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists() && userSnap.data().encryptionSalt) {
+      return userSnap.data().encryptionSalt;
     }
     return null;
   } catch (error) {
+    console.error('Error getting encryption salt:', error);
     throw error;
   }
 };

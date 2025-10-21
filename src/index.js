@@ -10,4 +10,6 @@ root.render(
     <App />
   </React.StrictMode>
 );
+
+// Register service worker for offline functionality
 serviceWorkerRegistration.register();

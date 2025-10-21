@@ -1,3 +1,4 @@
+/* src/components/Auth/Auth.css */
 .auth-container {
   display: flex;
   justify-content: center;
@@ -31,6 +32,7 @@
   margin-bottom: 8px;
   color: var(--text-secondary);
   font-size: 14px;
+  font-weight: 500;
 }
 
 .form-group small {
@@ -38,6 +40,7 @@
   margin-top: 4px;
   color: var(--text-secondary);
   font-size: 12px;
+  opacity: 0.8;
 }
 
 .form-group input {
@@ -49,11 +52,22 @@
   color: var(--text-primary);
   font-size: 16px;
   transition: border-color 0.3s;
+  box-sizing: border-box;
 }
 
 .form-group input:focus {
   outline: none;
   border-color: var(--primary-color);
+}
+
+.error-message {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 14px;
 }
 
 .submit-btn {
@@ -87,6 +101,7 @@
 .auth-footer a {
   color: var(--primary-color);
   text-decoration: none;
+  font-weight: 500;
 }
 
 .auth-footer a:hover {
