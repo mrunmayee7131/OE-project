@@ -1,5 +1,5 @@
 // src/App.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
 import Header from './components/Layout/Header';
@@ -16,6 +16,24 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [syncStatus, setSyncStatus] = useState('synced');
+
+  // Memoize syncNotes to prevent recreating it
+  const syncNotes = useCallback(async () => {
+    if (!navigator.onLine || !user) return;
+    
+    setSyncStatus('syncing');
+    try {
+      const result = await notesDB.syncWithFirebase(async (operation) => {
+        console.log('Syncing operation:', operation);
+      });
+      
+      setSyncStatus('synced');
+      console.log('Sync completed:', result);
+    } catch (error) {
+      setSyncStatus('error');
+      console.error('Sync failed:', error);
+    }
+  }, [user]);
 
   useEffect(() => {
     // Auth state listener
@@ -35,7 +53,13 @@ function App() {
       setLoading(false);
     });
 
-    // Network status listeners
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // Separate useEffect for network status listeners
+  useEffect(() => {
     const handleOnline = () => {
       console.log('Network: Online');
       setIsOffline(false);
@@ -53,28 +77,10 @@ function App() {
     window.addEventListener('offline', handleOffline);
 
     return () => {
-      unsubscribe();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [user]);
-
-  const syncNotes = async () => {
-    if (!navigator.onLine || !user) return;
-    
-    setSyncStatus('syncing');
-    try {
-      const result = await notesDB.syncWithFirebase(async (operation) => {
-        console.log('Syncing operation:', operation);
-      });
-      
-      setSyncStatus('synced');
-      console.log('Sync completed:', result);
-    } catch (error) {
-      setSyncStatus('error');
-      console.error('Sync failed:', error);
-    }
-  };
+  }, [user, syncNotes]);
 
   const handleLogout = async () => {
     try {

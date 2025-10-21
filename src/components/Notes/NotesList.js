@@ -1,5 +1,5 @@
 // src/components/Notes/NotesList.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getNotes, deleteNote as deleteFirebaseNote } from '../../services/firebase';
 import encryptionService from '../../services/encryption';
@@ -14,13 +14,8 @@ function NotesList({ user, isOffline }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (user) {
-      loadNotes();
-    }
-  }, [user, isOffline]);
-
-  const loadNotes = async () => {
+  // Memoize loadNotes to prevent infinite re-renders
+  const loadNotes = useCallback(async () => {
     if (!user) {
       setLoading(false);
       return;
@@ -75,7 +70,13 @@ function NotesList({ user, isOffline }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, isOffline]); // Only depend on user and isOffline
+
+  useEffect(() => {
+    if (user) {
+      loadNotes();
+    }
+  }, [user, isOffline, loadNotes]); // Include memoized loadNotes
 
   const handleDelete = async (noteId) => {
     if (!window.confirm('Are you sure you want to delete this note?')) return;

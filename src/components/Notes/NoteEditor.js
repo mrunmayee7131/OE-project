@@ -1,5 +1,5 @@
 // src/components/Notes/NoteEditor.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { saveNote, updateNote, getNote } from '../../services/firebase';
 import encryptionService from '../../services/encryption';
@@ -19,14 +19,12 @@ function NoteEditor({ user, isOffline }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [lastSaved, setLastSaved] = useState(null);
+  const autoSaveTimerRef = useRef(null);
 
-  useEffect(() => {
-    if (id) {
-      loadNote();
-    }
-  }, [id]);
-
-  const loadNote = async () => {
+  // Memoize loadNote to prevent re-creation
+  const loadNote = useCallback(async () => {
+    if (!id || !user) return;
+    
     setLoading(true);
     try {
       let noteData;
@@ -36,7 +34,7 @@ function NoteEditor({ user, isOffline }) {
         const notes = await notesDB.getLocalNotes(user.uid);
         noteData = notes.find(n => n.id === id);
       } else {
-        // Load from Firebase when online - FIXED: Added userId parameter
+        // Load from Firebase when online
         noteData = await getNote(user.uid, id);
       }
 
@@ -61,9 +59,15 @@ function NoteEditor({ user, isOffline }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, user, isOffline]);
 
-  const handleSave = async () => {
+  useEffect(() => {
+    if (id && user) {
+      loadNote();
+    }
+  }, [id, user, loadNote]);
+
+  const handleSave = useCallback(async () => {
     if (!note.title.trim() && !note.content.trim()) {
       setError('Please add a title or content');
       return;
@@ -88,7 +92,6 @@ function NoteEditor({ user, isOffline }) {
         if (isOffline) {
           await notesDB.updateNoteLocally(id, encryptedNote);
         } else {
-          // FIXED: Added userId parameter
           await updateNote(user.uid, id, encryptedNote);
           await notesDB.saveNoteLocally({ ...encryptedNote, id });
         }
@@ -103,7 +106,6 @@ function NoteEditor({ user, isOffline }) {
           encryptedNote.syncStatus = 'pending';
           await notesDB.saveNoteLocally(encryptedNote);
         } else {
-          // FIXED: Added userId parameter
           const newId = await saveNote(user.uid, encryptedNote);
           await notesDB.saveNoteLocally({ ...encryptedNote, id: newId });
         }
@@ -121,7 +123,7 @@ function NoteEditor({ user, isOffline }) {
     } finally {
       setSaving(false);
     }
-  };
+  }, [note, id, user, isOffline, navigate]);
 
   const handleAddTag = () => {
     if (tagInput.trim() && !note.tags.includes(tagInput.trim())) {
@@ -150,16 +152,27 @@ function NoteEditor({ user, isOffline }) {
     }
   };
 
-  // Auto-save functionality
+  // Auto-save functionality with proper cleanup
   useEffect(() => {
-    const autoSaveTimer = setTimeout(() => {
-      if ((note.title || note.content) && !saving && id) {
-        handleSave();
-      }
-    }, 5000); // Auto-save after 5 seconds of inactivity
+    // Clear any existing timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
 
-    return () => clearTimeout(autoSaveTimer);
-  }, [note]);
+    // Only auto-save for existing notes with content
+    if (id && (note.title || note.content) && !saving) {
+      autoSaveTimerRef.current = setTimeout(() => {
+        handleSave();
+      }, 5000); // Auto-save after 5 seconds of inactivity
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [note.title, note.content, id, saving]); // Don't include handleSave to avoid infinite loops
 
   if (loading) {
     return (
@@ -188,49 +201,47 @@ function NoteEditor({ user, isOffline }) {
             disabled={saving}
             className="save-btn"
           >
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? 'Saving...' : (id ? 'Update' : 'Save')}
           </button>
         </div>
       </div>
 
       {error && <div className="error-message">{error}</div>}
 
-      <div className="editor-content">
+      {isOffline && (
+        <div className="offline-notice">
+          📵 Offline mode - Note will sync when reconnected
+        </div>
+      )}
+
+      <div className="editor-body">
         <input
           type="text"
           placeholder="Note Title..."
           value={note.title}
           onChange={(e) => setNote({ ...note, title: e.target.value })}
-          className="note-title-input"
+          className="title-input"
         />
 
         <div className="tags-section">
-          <div className="tag-input-container">
+          <div className="tag-input-wrapper">
             <input
               type="text"
               placeholder="Add tags..."
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleAddTag();
-                }
-              }}
+              onKeyPress={(e) => e.key === 'Enter' && handleAddTag()}
               className="tag-input"
             />
             <button onClick={handleAddTag} className="add-tag-btn">
-              Add Tag
+              + Add
             </button>
           </div>
           <div className="tags-list">
             {note.tags.map((tag, index) => (
               <span key={index} className="tag">
                 {tag}
-                <button 
-                  onClick={() => handleRemoveTag(tag)}
-                  className="remove-tag"
-                >
+                <button onClick={() => handleRemoveTag(tag)} className="remove-tag">
                   ×
                 </button>
               </span>
@@ -239,18 +250,11 @@ function NoteEditor({ user, isOffline }) {
         </div>
 
         <textarea
-          placeholder="Write your note here... (Auto-saves every 5 seconds)"
+          placeholder="Start typing your encrypted note..."
           value={note.content}
           onChange={(e) => setNote({ ...note, content: e.target.value })}
-          className="note-content-input"
+          className="content-textarea"
         />
-      </div>
-
-      <div className="editor-footer">
-        <p>
-          🔒 End-to-end encrypted • 
-          {isOffline ? ' 📵 Offline (will sync when online)' : ' ☁️ Online'}
-        </p>
       </div>
     </div>
   );
