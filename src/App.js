@@ -7,7 +7,7 @@ import Login from './components/Auth/Login';
 import Register from './components/Auth/Register';
 import NotesList from './components/Notes/NotesList';
 import NoteEditor from './components/Notes/NoteEditor';
-import { onAuthChange } from './services/firebase';
+import { onAuthChange, getUserEncryptionSalt } from './services/firebase';
 import encryptionService from './services/encryption';
 import notesDB from './services/indexedDB';
 
@@ -35,20 +35,67 @@ function App() {
     }
   }, [user]);
 
+  // Setup encryption key for returning users
+  const setupEncryption = async (firebaseUser) => {
+    try {
+      // Check if we have the key in session storage (for page refreshes)
+      const sessionKey = sessionStorage.getItem('encKey');
+      if (sessionKey) {
+        encryptionService.setMasterKey(sessionKey);
+        console.log('Encryption key restored from session');
+        return true;
+      }
+
+      // Try to get salt from local storage first (for offline access)
+      let salt = await notesDB.getEncryptionSalt(firebaseUser.uid);
+      
+      if (!salt) {
+        // If not in local storage, get from Firebase
+        salt = await getUserEncryptionSalt(firebaseUser.uid);
+        
+        if (salt) {
+          // Store locally for next time
+          await notesDB.saveEncryptionSalt(firebaseUser.uid, salt);
+        }
+      }
+
+      if (salt) {
+        // For returning users with salt but no session key,
+        // we need them to re-enter their encryption password
+        // This typically happens after a browser restart
+        console.log('Salt found but no session key - user needs to re-authenticate');
+        return false; // This will redirect to login
+      }
+
+      // New user or corrupted data - will be handled at login/register
+      console.log('No encryption salt found - will be set up on login');
+      return true; // Allow navigation, will be set up on first save
+    } catch (error) {
+      console.error('Error setting up encryption:', error);
+      return false;
+    }
+  };
+
   useEffect(() => {
     // Auth state listener
     const unsubscribe = onAuthChange(async (firebaseUser) => {
       if (firebaseUser) {
         console.log('User logged in:', firebaseUser.uid);
+        
+        // Setup encryption for the user
+        const encryptionReady = await setupEncryption(firebaseUser);
+        
         setUser({
           uid: firebaseUser.uid,
           email: firebaseUser.email,
-          displayName: firebaseUser.displayName
+          displayName: firebaseUser.displayName,
+          encryptionReady
         });
       } else {
         console.log('User logged out');
         setUser(null);
         encryptionService.clearMasterKey();
+        sessionStorage.removeItem('encKey');
       }
       setLoading(false);
     });
@@ -89,6 +136,7 @@ function App() {
         await notesDB.clearUserData(user.uid);
       }
       encryptionService.clearMasterKey();
+      sessionStorage.removeItem('encKey');
       
       // Sign out from Firebase
       const { logoutUser } = await import('./services/firebase');
@@ -109,6 +157,11 @@ function App() {
         </div>
       </div>
     );
+  }
+
+  // If user is logged in but encryption is not ready, redirect to login
+  if (user && !user.encryptionReady && !window.location.pathname.includes('/login')) {
+    return <Router><Navigate to="/login" /></Router>;
   }
 
   return (
@@ -132,7 +185,7 @@ function App() {
             <Route 
               path="/login" 
               element={
-                !user ? <Login /> : <Navigate to="/notes" />
+                !user || !user.encryptionReady ? <Login /> : <Navigate to="/notes" />
               } 
             />
             <Route 
@@ -144,19 +197,19 @@ function App() {
             <Route 
               path="/notes" 
               element={
-                user ? <NotesList user={user} isOffline={isOffline} /> : <Navigate to="/login" />
+                user && user.encryptionReady ? <NotesList user={user} isOffline={isOffline} /> : <Navigate to="/login" />
               } 
             />
             <Route 
               path="/notes/new" 
               element={
-                user ? <NoteEditor user={user} isOffline={isOffline} /> : <Navigate to="/login" />
+                user && user.encryptionReady ? <NoteEditor user={user} isOffline={isOffline} /> : <Navigate to="/login" />
               } 
             />
             <Route 
               path="/notes/:id" 
               element={
-                user ? <NoteEditor user={user} isOffline={isOffline} /> : <Navigate to="/login" />
+                user && user.encryptionReady ? <NoteEditor user={user} isOffline={isOffline} /> : <Navigate to="/login" />
               } 
             />
             <Route 

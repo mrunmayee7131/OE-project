@@ -1,7 +1,7 @@
 // src/components/Auth/Login.js
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { loginUser, getUserEncryptionSalt } from '../../services/firebase';
+import { loginUser, getUserEncryptionSalt, saveUserEncryptionSalt } from '../../services/firebase';
 import encryptionService from '../../services/encryption';
 import notesDB from '../../services/indexedDB';
 import './Auth.css';
@@ -33,33 +33,42 @@ function Login() {
       const user = await loginUser(formData.email, formData.password);
 
       // Get user's encryption salt from Firestore
-      const salt = await getUserEncryptionSalt(user.uid);
+      let salt = await getUserEncryptionSalt(user.uid);
       
-      if (salt) {
-        // Derive encryption key from password
-        const { key } = await encryptionService.deriveKeyFromPassword(
-          formData.encryptionPassword || formData.password,
+      // Use encryption password if provided, otherwise use login password
+      const encryptionPassword = formData.encryptionPassword || formData.password;
+      
+      if (!salt) {
+        // First time login - create encryption key
+        console.log('First time login - generating encryption key');
+        const derivedKey = await encryptionService.deriveKeyFromPassword(encryptionPassword);
+        
+        encryptionService.setMasterKey(derivedKey.key);
+        
+        // Save salt to Firestore and locally
+        await saveUserEncryptionSalt(user.uid, derivedKey.salt);
+        await notesDB.saveEncryptionSalt(user.uid, derivedKey.salt);
+        
+        console.log('Encryption key generated and saved');
+      } else {
+        // Existing user - derive key from stored salt
+        console.log('Existing user - deriving key from stored salt');
+        const derivedKey = await encryptionService.deriveKeyFromPassword(
+          encryptionPassword,
           salt
         );
         
         // Set the master key for this session
-        encryptionService.setMasterKey(key);
+        encryptionService.setMasterKey(derivedKey.key);
         
         // Save salt locally for offline access
         await notesDB.saveEncryptionSalt(user.uid, salt);
-      } else {
-        // First time login - create encryption key
-        const { key, salt: newSalt } = await encryptionService.deriveKeyFromPassword(
-          formData.encryptionPassword || formData.password
-        );
         
-        encryptionService.setMasterKey(key);
-        
-        // Save salt to Firestore and locally
-        const { saveUserEncryptionSalt } = await import('../../services/firebase');
-        await saveUserEncryptionSalt(user.uid, newSalt);
-        await notesDB.saveEncryptionSalt(user.uid, newSalt);
+        console.log('Encryption key set from existing salt');
       }
+
+      // Store encryption key in session storage as backup
+      sessionStorage.setItem('encKey', encryptionService.getMasterKey());
 
       navigate('/notes');
     } catch (error) {
@@ -77,46 +86,43 @@ function Login() {
         
         {error && <div className="error-message">{error}</div>}
         
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
-            <label htmlFor="email">Email</label>
             <input
               type="email"
-              id="email"
               name="email"
+              placeholder="Email"
               value={formData.email}
               onChange={handleChange}
               required
-              placeholder="your@email.com"
+              className="form-input"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Password</label>
             <input
               type="password"
-              id="password"
               name="password"
+              placeholder="Password"
               value={formData.password}
               onChange={handleChange}
               required
-              placeholder="Your account password"
+              className="form-input"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="encryptionPassword">
-              Encryption Password (Optional)
-              <small>Leave empty to use account password for encryption</small>
-            </label>
             <input
               type="password"
-              id="encryptionPassword"
               name="encryptionPassword"
+              placeholder="Encryption Password (optional)"
               value={formData.encryptionPassword}
               onChange={handleChange}
-              placeholder="Separate encryption password"
+              className="form-input"
             />
+            <small className="help-text">
+              Leave empty to use your login password for encryption
+            </small>
           </div>
 
           <button type="submit" disabled={loading} className="submit-btn">
@@ -126,10 +132,6 @@ function Login() {
 
         <div className="auth-footer">
           <p>Don't have an account? <Link to="/register">Register</Link></p>
-        </div>
-
-        <div className="security-note">
-          <p>🔒 Your notes are encrypted end-to-end. We never see your data.</p>
         </div>
       </div>
     </div>

@@ -38,20 +38,34 @@ function NoteEditor({ user, isOffline }) {
         noteData = await getNote(user.uid, id);
       }
 
-      if (noteData && noteData.encrypted) {
-        // Decrypt the note
-        const decrypted = encryptionService.decryptNote(noteData);
-        setNote({
-          title: decrypted.title,
-          content: decrypted.content,
-          tags: decrypted.tags || []
-        });
-      } else if (noteData) {
-        setNote({
-          title: noteData.title,
-          content: noteData.content,
-          tags: noteData.tags || []
-        });
+      if (noteData) {
+        // Check if note is encrypted
+        if (noteData.encrypted) {
+          try {
+            // Decrypt the note
+            const decrypted = encryptionService.decryptNote(noteData);
+            setNote({
+              title: decrypted.title || '',
+              content: decrypted.content || '',
+              tags: decrypted.tags || []
+            });
+          } catch (err) {
+            console.error('Failed to decrypt note:', err);
+            setError('Unable to decrypt note. Please check your encryption password.');
+            setNote({
+              title: '[Unable to Decrypt]',
+              content: 'This note is encrypted and cannot be decrypted with your current encryption key.',
+              tags: []
+            });
+          }
+        } else {
+          // Note is not encrypted (legacy or corrupted)
+          setNote({
+            title: noteData.title || '',
+            content: noteData.content || '',
+            tags: noteData.tags || []
+          });
+        }
       }
     } catch (error) {
       console.error('Error loading note:', error);
@@ -73,23 +87,51 @@ function NoteEditor({ user, isOffline }) {
       return;
     }
 
+    // Check if encryption key is set
+    if (!encryptionService.getMasterKey()) {
+      setError('Encryption key not set. Please log out and log in again.');
+      
+      // Try to restore from session storage
+      const sessionKey = sessionStorage.getItem('encKey');
+      if (sessionKey) {
+        encryptionService.setMasterKey(sessionKey);
+        console.log('Encryption key restored from session');
+      } else {
+        // Redirect to login if no key available
+        navigate('/login');
+        return;
+      }
+    }
+
     setSaving(true);
     setError('');
 
     try {
       // Prepare note data
       const noteData = {
-        ...note,
+        title: note.title,
+        content: note.content,
+        tags: note.tags,
         userId: user.uid,
         updatedAt: new Date().toISOString()
       };
 
       // Encrypt the note
-      const encryptedNote = encryptionService.encryptNote(noteData);
+      let encryptedNote;
+      try {
+        encryptedNote = encryptionService.encryptNote(noteData);
+      } catch (encErr) {
+        console.error('Encryption error:', encErr);
+        setError('Failed to encrypt note. Please check your encryption settings.');
+        setSaving(false);
+        return;
+      }
 
       if (id) {
         // Update existing note
         if (isOffline) {
+          encryptedNote.id = id;
+          encryptedNote.syncStatus = 'pending';
           await notesDB.updateNoteLocally(id, encryptedNote);
         } else {
           await updateNote(user.uid, id, encryptedNote);
@@ -107,11 +149,13 @@ function NoteEditor({ user, isOffline }) {
           await notesDB.saveNoteLocally(encryptedNote);
         } else {
           const newId = await saveNote(user.uid, encryptedNote);
-          await notesDB.saveNoteLocally({ ...encryptedNote, id: newId });
+          encryptedNote.id = newId;
+          await notesDB.saveNoteLocally(encryptedNote);
         }
       }
 
       setLastSaved(new Date());
+      setError(''); // Clear any previous errors
       
       // Navigate back after short delay to show save confirmation
       setTimeout(() => {
@@ -160,8 +204,9 @@ function NoteEditor({ user, isOffline }) {
     }
 
     // Only auto-save for existing notes with content
-    if (id && (note.title || note.content) && !saving) {
+    if (id && (note.title || note.content) && !saving && !error) {
       autoSaveTimerRef.current = setTimeout(() => {
+        console.log('Auto-saving note...');
         handleSave();
       }, 5000); // Auto-save after 5 seconds of inactivity
     }
@@ -172,7 +217,7 @@ function NoteEditor({ user, isOffline }) {
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [note.title, note.content, id, saving]); // Don't include handleSave to avoid infinite loops
+  }, [note.title, note.content, id, saving, error]); // Don't include handleSave to avoid infinite loops
 
   if (loading) {
     return (
@@ -230,7 +275,7 @@ function NoteEditor({ user, isOffline }) {
               placeholder="Add tags..."
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleAddTag()}
+              onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
               className="tag-input"
             />
             <button onClick={handleAddTag} className="add-tag-btn">

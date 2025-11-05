@@ -64,6 +64,11 @@ function Register() {
       // Save salt locally for offline access
       await notesDB.saveEncryptionSalt(user.uid, salt);
 
+      // Store encryption key in session storage as backup
+      sessionStorage.setItem('encKey', key);
+
+      console.log('User registered and encryption key set');
+
       // Navigate to notes
       navigate('/notes');
     } catch (error) {
@@ -83,76 +88,71 @@ function Register() {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h2>🔐 Create Secure Account</h2>
+        <h2>🔒 Create Secure Account</h2>
         
         {error && <div className="error-message">{error}</div>}
         
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
-            <label htmlFor="displayName">Display Name</label>
             <input
               type="text"
-              id="displayName"
               name="displayName"
+              placeholder="Display Name (optional)"
               value={formData.displayName}
               onChange={handleChange}
-              placeholder="Your name"
+              className="form-input"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="email">Email *</label>
             <input
               type="email"
-              id="email"
               name="email"
+              placeholder="Email"
               value={formData.email}
               onChange={handleChange}
               required
-              placeholder="your@email.com"
+              className="form-input"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Password *</label>
             <input
               type="password"
-              id="password"
               name="password"
+              placeholder="Password (min 8 characters)"
               value={formData.password}
               onChange={handleChange}
               required
               minLength="8"
-              placeholder="At least 8 characters"
+              className="form-input"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="confirmPassword">Confirm Password *</label>
             <input
               type="password"
-              id="confirmPassword"
               name="confirmPassword"
+              placeholder="Confirm Password"
               value={formData.confirmPassword}
               onChange={handleChange}
               required
-              placeholder="Confirm your password"
+              className="form-input"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="encryptionPassword">
-              Encryption Password (Optional)
-              <small>Use a different password for extra security</small>
-            </label>
             <input
               type="password"
-              id="encryptionPassword"
               name="encryptionPassword"
+              placeholder="Encryption Password (optional)"
               value={formData.encryptionPassword}
               onChange={handleChange}
-              placeholder="Separate encryption password"
+              className="form-input"
             />
+            <small className="help-text">
+              💡 Use a different password for extra security, or leave empty to use login password
+            </small>
           </div>
 
           <button type="submit" disabled={loading} className="submit-btn">
@@ -164,9 +164,10 @@ function Register() {
           <p>Already have an account? <Link to="/login">Login</Link></p>
         </div>
 
-        <div className="security-note">
-          <p>🔒 Zero-Knowledge Encryption</p>
-          <p>Your encryption password never leaves your device. We cannot access your notes.</p>
+        <div className="security-notice">
+          <p>🔐 Your notes are encrypted end-to-end</p>
+          <p>📝 We never see your decrypted content</p>
+          <p>🔑 Remember your encryption password - it cannot be recovered!</p>
         </div>
       </div>
     </div>
